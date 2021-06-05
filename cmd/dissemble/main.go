@@ -10,27 +10,39 @@ import (
     "fmt"
     "flag"
     "os"
+    "path/filepath"
+    "strings"
+    "log"
+    "unicode"
+    "io/ioutil"
 )
 
 /*
     TODO:
     * Determine packages-
-        fmt
-        flags
-        os
-        (something to shift the runes)
+        fmt - print shit (probably just for debugging)
+        flags - help/shift/target(maybe)
+        os - exit prog/get args
+        filepath for getting file extension
+        strings for trimming file extension
+        log - log errors
+        unicode - check if char is letter easily (could probably write a dictionary for this)
+        ioutil - reading/writing files?
     
     * Sort out flags
-        help[] TODO
-        target[]
+        help[x] TODO
+        target[x]
         shift[x]
     
-    * TODO:Help documentation
+    * [x]TODO:Help documentation
     
-    * TODO Determine alphabetical shifting- probably through runes (unicode)
+    * [x]TODO Determine alphabetical shifting- probably through runes (unicode)
     []rune(string)
     string(rune)
-    a:97 - z:122
+    A:65 - z:122 - https://play.golang.org/p/2-16HLapfJk
+
+    * [x] TODO Write to file
+    * [] TODO Fix shift
 
 */
 
@@ -41,14 +53,40 @@ func leadError() {
 
 //TODO Make this work.
 func transform(payload string, directive string, shift int) string {
+    var result string
+    var cr int
     switch directive {
     case "encrypt":
-        return "encrypted"
+        r := []rune(payload)
+        for _, i := range r {
+            if (unicode.IsLetter(i)) {
+                cr = int(i) + shift
+                if (cr > 122) {
+                    cr -= 26
+                }
+            } else {
+                cr = int(i)
+            }
+            result += string(rune(cr))
+        }
     case "decrypt":
-        return "decrypted"
+        r := []rune(payload)
+        for _, i := range r {
+            if (unicode.IsLetter(i)) {
+                cr = int(i) - shift
+                if (cr < 65) {
+                    cr += 26
+                }
+            } else {
+                cr = int(i)
+            }
+            result += string(rune(cr))
+        }
     default:
-        return "Nothing"
+        log.Fatal("Error transforming payload")
+        os.Exit(1)
     }
+    return result
 }
 
 func leadHelp() {
@@ -65,43 +103,65 @@ Available Commands:
   decrypt    Shifts the character up the alphabet.
 
 Flags:
-  -t, --target   the content to be transformed. Can be a file or string. [Required]
+  -t, --target   the content to be transformed. Can be a file or string. [Required] -- Is this still relevant?
   -s, --shift    the alphabetical value to shift. Cannot be 0.
 `, "")
 }
 
+func getFileBody(target string) string {
+    content, err := ioutil.ReadFile(target)
+    if err != nil {
+        log.Fatal(err)
+    }
+    return string(content)
+}
+
+func writeNewFile(fileName string, payload []byte, directive string) {
+    var newFileName string
+    ext := filepath.Ext(fileName)
+    basename := strings.TrimSuffix(fileName, ext)
+    switch directive {
+    case "encrypt":
+        newFileName = basename + "_encrypted" + ext
+    case "decrypt":
+        basename = strings.TrimSuffix(basename, "_encrypted")
+        newFileName = basename + ext
+    default:
+        newFileName = basename + "_modified" + ext
+    }
+    fmt.Println(newFileName)
+    ioutil.WriteFile(newFileName, payload, 0644)
+}
+
+
 func main() {
     help := flag.Bool("help", false, "")
-    target := flag.String("target", "", "Content to be transformed.") 
     shift := flag.Int("shift", 3, "Alphabetical value to shift. Cannot be 0. (optional)")
     flag.Parse()
-    
+
     if *help != false {
         leadHelp()
         os.Exit(0)
     }
 
-//    if *target == "" {
-//        leadError()
-//        flag.PrintDefaults()
-//        os.Exit(1)
-//    }
-
     if len(os.Args) < 2 {
-       leadError() 
+       leadError()
     }
 
     switch os.Args[1] {
     case "encrypt":
-        transform(os.Args[2], "encrypt", *shift)
-        fmt.Printf("This would encrypt %v.", target)
+        content := getFileBody(os.Args[2])
+        result := transform(content, "encrypt", *shift)
+        writeNewFile(os.Args[2], []byte(result), "encrypt")
+        fmt.Println(result)
     case "decrypt":
-        transform(os.Args[2], "decrypt", *shift)
-        fmt.Printf("This would decrypt %v.", target)
+        content := getFileBody(os.Args[2])
+        result := transform(content, "decrypt", *shift)
+        writeNewFile(os.Args[2], []byte(result), "decrypt")
+        fmt.Println(result)
     default:
         leadError()
         flag.PrintDefaults()
         os.Exit(1)
     }
-    fmt.Printf("%v", flag.Args())
-} 
+}
